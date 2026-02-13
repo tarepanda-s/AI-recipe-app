@@ -251,11 +251,39 @@
         async function generateImage(prompt) {
             if (!userApiKey) return null;
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelImage}:predict?key=${userApiKey}`;
-                const payload = { instances: [{ prompt: `Appetizing food photo of ${prompt}, high quality photography, simple plate` }], parameters: { sampleCount: 1 } };
-                const data = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
-            } catch { return null; }
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:generateImages?key=${userApiKey}`;
+                const payload = { 
+                    requests: [{ 
+                        prompt: `Appetizing food photo of ${prompt}, high quality photography, simple plate`,
+                        numberOfImages: 1,
+                        safetyFilter: [
+                            { category: "VIOLENCE", threshold: "BLOCK_NONE" },
+                            { category: "SEXUAL", threshold: "BLOCK_NONE" },
+                            { category: "MEDICAL", threshold: "BLOCK_NONE" },
+                            { category: "DANGEROUS", threshold: "BLOCK_NONE" }
+                        ]
+                    }] 
+                };
+                const res = await fetch(url, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(payload) 
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                
+                // レスポンス形式の確認
+                if (data.images && data.images[0]) {
+                    return `data:image/png;base64,${data.images[0]}`;
+                }
+                if (data.results && data.results[0] && data.results[0].image) {
+                    return `data:image/png;base64,${data.results[0].image.bytesBase64Encoded}`;
+                }
+                return null;
+            } catch (e) { 
+                console.error("Image generation error:", e);
+                return null; 
+            }
         }
 
         async function generateRecipes() {
@@ -461,4 +489,5 @@
     </script>
 </body>
 </html>
+
 
