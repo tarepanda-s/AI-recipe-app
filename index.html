@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- PWA用の設定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="AIレシピ">
+    <title>おうちレシピ提案アプリ</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Kiwi Maru', serif;
+            background-color: #fff9f0;
+            /* スマホのバウンススクロールを防止 */
+            overscroll-behavior-y: contain;
+            /* iPhoneのノッチ（セーフエリア）対応 */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .recipe-card { transition: all 0.3s ease; }
+        /* タップ時のハイライトを無効化（アプリ感向上） */
+        * { -webkit-tap-highlight-color: transparent; }
+        
+        .kawaii-button { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); }
+        .loader { border-top-color: #ff9a9e; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .stock-tag { animation: pop 0.3s ease-out; cursor: pointer; user-select: none; }
+        @keyframes pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        
+        .tag-default { background-color: white; border-color: #fce7f3; color: #db2777; }
+        .tag-must { background-color: #fefce8 !important; border-color: #fef08a !important; color: #a16207 !important; }
+        .tag-hated-must { background-color: #fff1f2 !important; border-color: #fecdd3 !important; color: #e11d48 !important; }
+
+        #fav-drawer { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .drawer-open { transform: translateX(0); }
+        .drawer-closed { transform: translateX(100%); }
+
+        /* スクロールバー非表示（アプリ風UI） */
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-3 md:p-8 pb-24 relative overflow-x-hidden text-gray-800">
+
+    <!-- サイドお気に入りメニュー -->
+    <div id="fav-drawer-overlay" onclick="toggleDrawer()" class="fixed inset-0 bg-black/40 z-[60] hidden backdrop-blur-sm"></div>
+    <div id="fav-drawer" class="fixed top-0 right-0 h-full w-80 bg-white z-[70] shadow-2xl drawer-closed flex flex-col p-6">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-black text-pink-500">💖 お気に入り</h2>
+            <button onclick="toggleDrawer()" class="text-gray-400 text-3xl p-2">&times;</button>
+        </div>
+        <div id="drawer-list" class="flex-1 overflow-y-auto space-y-4 pb-10 text-xs text-left">
+            <p class="text-center text-gray-400 py-10">保存されたレシピはありません</p>
+        </div>
+    </div>
+
+    <!-- フローティングお気に入りボタン（スマホで押しやすい位置） -->
+    <button onclick="toggleDrawer()" class="fixed bottom-8 right-6 w-16 h-16 bg-pink-500 text-white rounded-full shadow-2xl z-50 flex flex-col items-center justify-center hover:scale-110 active:scale-90 transition-all">
+        <span class="text-2xl">💖</span>
+        <span class="text-[10px] font-bold">保存済</span>
+    </button>
+
+    <header class="text-center mb-6 z-10 w-full max-w-xl">
+        <h1 class="text-3xl md:text-4xl font-black text-pink-500 mb-4 flex items-center justify-center gap-2">
+            <span class="text-4xl md:text-5xl">🍳</span> AIレシピ
+        </h1>
+        
+        <div class="bg-white/90 backdrop-blur-sm rounded-3xl p-4 md:p-5 border-2 border-pink-100 text-left shadow-sm">
+            <h2 class="text-xs font-bold text-pink-500 mb-2 flex items-center gap-1">✨ つかいかた</h2>
+            <ul class="text-[11px] md:text-[12px] text-gray-600 space-y-2 leading-tight">
+                <li class="flex gap-2">
+                    <span class="bg-pink-400 text-white w-4 h-4 rounded-full text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                    <span>使いたい食材を追加してね。</span>
+                </li>
+                <li class="flex gap-2">
+                    <span class="bg-pink-400 text-white w-4 h-4 rounded-full text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                    <span>タグをタップ！<br>
+                        <span class="font-bold text-yellow-600">⭐ 必ず使う</span> または <span class="font-bold text-red-500">😝 苦手だけど使う</span> を選べるよ。
+                    </span>
+                </li>
+                <li class="flex gap-2">
+                    <span class="bg-pink-400 text-white w-4 h-4 rounded-full text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
+                    <span>「こだわり」に条件（時短、ヘルシー等）を入力！</span>
+                </li>
+                <li class="flex gap-2">
+                    <span class="bg-pink-400 text-white w-4 h-4 rounded-full text-[10px] flex items-center justify-center shrink-0 mt-0.5">4</span>
+                    <span>最後に下のボタンを押して、5つのレシピをチェックしてね✨</span>
+                </li>
+            </ul>
+        </div>
+    </header>
+
+    <main class="w-full max-w-xl bg-white/95 rounded-[2rem] md:rounded-[2.5rem] shadow-xl p-5 md:p-8 mb-8 border-2 md:border-4 border-pink-200 z-10">
+        <div class="mb-4">
+            <label class="block text-xs font-bold text-gray-600 mb-2 px-1 text-left">🥬 ① 食材を追加</label>
+            <div class="flex gap-2">
+                <input type="text" id="stock-input" placeholder="にんじん, ピーマン..." class="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-pink-100 focus:outline-none focus:border-pink-300 text-base shadow-inner appearance-none" onkeypress="if(event.key==='Enter') addStock()">
+                <button onclick="addStock()" class="bg-pink-400 text-white px-5 py-3 rounded-xl font-bold hover:bg-pink-500 shadow-md active:scale-95 transition-all shrink-0">追加</button>
+            </div>
+        </div>
+
+        <div id="stock-list" class="flex flex-wrap gap-2 min-h-[50px] p-3 bg-pink-50/30 rounded-xl border-2 border-dashed border-pink-100 mb-6">
+            <p id="empty-msg" class="text-gray-400 text-xs italic w-full text-center py-2">食材がありません</p>
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-xs font-bold text-gray-600 mb-2 px-1 text-left">⭐ ② こだわり（任意）</label>
+            <input type="text" id="condition-input" placeholder="例：ダイエット、時短、子供が喜ぶ" class="w-full px-4 py-3 rounded-xl border-2 border-blue-100 focus:outline-none focus:border-blue-300 text-base bg-blue-50/10 shadow-inner appearance-none">
+        </div>
+
+        <button id="suggest-btn" onclick="generateRecipes()" class="kawaii-button w-full py-5 rounded-2xl text-white font-black text-lg shadow-lg hover:brightness-105 active:scale-[0.96] transition-all disabled:grayscale disabled:opacity-50">
+            5つのレシピを提案してもらう！ ✨
+        </button>
+    </main>
+
+    <div id="loading" class="hidden flex flex-col items-center mb-8 bg-white/90 px-6 py-5 rounded-3xl border-2 border-pink-100 z-10 shadow-lg">
+        <div class="loader rounded-full border-4 border-t-4 border-pink-50 h-10 w-10 mb-3"></div>
+        <p class="text-pink-500 font-bold text-sm">おいしい魔法をかけています...</p>
+    </div>
+
+    <div id="recipe-results" class="w-full max-w-xl md:max-w-3xl flex flex-col gap-6 mb-12 z-10"></div>
+
+    <section class="w-full max-w-3xl border-t-2 border-pink-100 pt-8 z-10">
+        <h2 class="text-2xl font-black text-pink-500 text-center mb-6">💖 お気に入り</h2>
+        <div id="favorites-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 md:gap-4 pb-10 px-2"></div>
+    </section>
+
+    <!-- Modal -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/70 hidden z-[100] flex items-end md:items-center justify-center backdrop-blur-sm">
+        <div id="modal-content" class="bg-white w-full max-w-2xl rounded-t-[2.5rem] md:rounded-[3rem] overflow-hidden shadow-2xl relative max-h-[94vh] overflow-y-auto border-t-8 md:border-8 border-white text-left">
+            <button onclick="closeModal()" class="sticky top-4 left-[85%] bg-white/90 text-gray-400 w-12 h-12 rounded-full flex items-center justify-center text-4xl font-light z-[110] shadow-lg mb-[-48px]">×</button>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+        const modelText = "gemini-2.5-flash-preview-09-2025";
+        const modelImage = "imagen-4.0-generate-001";
+
+        let stockIngredients = []; 
+        let favoriteRecipes = [];
+
+        function addStock() {
+            const input = document.getElementById('stock-input');
+            const value = input.value.trim();
+            if (!value) return;
+            const newItems = value.split(/[、,，\s]+/)
+                .filter(name => name && !stockIngredients.some(i => i.name === name))
+                .map(name => ({ name, status: 'default' }));
+            
+            stockIngredients = [...stockIngredients, ...newItems];
+            input.value = "";
+            input.blur(); // キーボードを閉じる（スマホ対応）
+            renderStock();
+        }
+
+        function cycleStatus(name) {
+            stockIngredients = stockIngredients.map(i => {
+                if (i.name === name) {
+                    if (i.status === 'default') return { ...i, status: 'must' };
+                    if (i.status === 'must') return { ...i, status: 'hated-must' };
+                    return { ...i, status: 'default' };
+                }
+                return i;
+            });
+            renderStock();
+        }
+
+        function removeStock(e, name) {
+            e.stopPropagation();
+            stockIngredients = stockIngredients.filter(i => i.name !== name);
+            renderStock();
+        }
+
+        function renderStock() {
+            const list = document.getElementById('stock-list');
+            const emptyMsg = document.getElementById('empty-msg');
+            list.innerHTML = "";
+            if (stockIngredients.length === 0) {
+                list.appendChild(emptyMsg);
+            } else {
+                stockIngredients.forEach(item => {
+                    const tag = document.createElement('span');
+                    let statusClass = "tag-default";
+                    let icon = "";
+                    if (item.status === 'must') { statusClass = "tag-must"; icon = "⭐ "; }
+                    else if (item.status === 'hated-must') { statusClass = "tag-hated-must"; icon = "😝 "; }
+
+                    tag.className = `stock-tag border-2 px-3 py-2 rounded-xl text-sm font-bold flex items-center gap-1 shadow-sm transition-colors ${statusClass}`;
+                    tag.onclick = () => cycleStatus(item.name);
+                    tag.innerHTML = `${icon}${item.name}<button onclick="removeStock(event, '${item.name}')" class="text-gray-300 hover:text-red-400 font-bold ml-2 text-lg">×</button>`;
+                    list.appendChild(tag);
+                });
+            }
+        }
+
+        function toggleDrawer() {
+            const drawer = document.getElementById('fav-drawer');
+            const overlay = document.getElementById('fav-drawer-overlay');
+            const isOpen = drawer.classList.contains('drawer-open');
+            
+            if (isOpen) {
+                drawer.classList.replace('drawer-open', 'drawer-closed');
+                overlay.classList.add('hidden');
+            } else {
+                drawer.classList.replace('drawer-closed', 'drawer-open');
+                overlay.classList.remove('hidden');
+                renderFavs();
+            }
+        }
+
+        async function fetchWithRetry(url, options, retries = 5) {
+            const res = await fetch(url, options);
+            if (!res.ok) {
+                if (retries > 0) return fetchWithRetry(url, options, retries - 1);
+                throw new Error("API Error");
+            }
+            return res.json();
+        }
+
+        async function generateImage(prompt) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelImage}:predict?key=${apiKey}`;
+                const payload = { instances: [{ prompt: `Appetizing food photo of ${prompt}, high quality photography, simple plate` }], parameters: { sampleCount: 1 } };
+                const data = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
+            } catch { return null; }
+        }
+
+        async function generateRecipes() {
+            if (stockIngredients.length === 0) return;
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('recipe-results');
+            const condition = document.getElementById('condition-input').value;
+
+            results.innerHTML = "";
+            loading.classList.remove('hidden');
+            document.getElementById('suggest-btn').disabled = true;
+
+            const mustItems = stockIngredients.filter(i => i.status === 'must').map(i => i.name);
+            const hatedMustItems = stockIngredients.filter(i => i.status === 'hated-must').map(i => i.name);
+
+            const prompt = `
+以下の食材設定に基づいて、レシピを【5つ】提案してください。
+
+【食材の使用絶対義務】
+1. マスト食材: [${mustItems.join(', ')}] -> 必ずメイン材料として含めること。
+2. 苦手マスト食材: [${hatedMustItems.join(', ')}] -> 必ず含めること。使用省略は禁止。
+
+【調理ルール】
+1. 「苦手マスト食材」は食べやすい工夫を施し、必ず工程(steps)に含めてください。
+2. 全てのレシピで「マスト食材」と「苦手マスト食材」の両方を材料に含めてください。
+3. 条件（${condition || "特になし"}）を反映させてください。
+
+【出力形式の注意】
+・caloriesとcostは【数値のみ】出力してください。「kcal」や「円」などの単位を文字列に含めることは【厳禁】です。
+
+【JSON出力項目】
+・title (String)
+・calories (Number)
+・cost (Number)
+・description (String)
+・ingredients (Array of Strings): 各材料と分量を文字列として含めてください。
+・steps (Array of Strings)
+・point_hated (String): 苦手食材の工夫
+・point_condition (String): こだわり充足理由
+・image: "" (空文字)`;
+
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelText}:generateContent?key=${apiKey}`;
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                };
+                const data = await fetchWithRetry(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const list = JSON.parse(data.candidates[0].content.parts[0].text);
+                
+                for (const recipe of list) {
+                    recipe.calories = String(recipe.calories).replace(/[^\d]/g, '');
+                    recipe.cost = String(recipe.cost).replace(/[^\d]/g, '');
+
+                    const card = createCard(recipe);
+                    results.appendChild(card);
+                    generateImage(recipe.title).then(src => {
+                        const img = card.querySelector('.recipe-img');
+                        const ldr = card.querySelector('.img-loader');
+                        if (src) { 
+                            img.src = src; 
+                            img.classList.remove('hidden'); 
+                            recipe.image = src; 
+                        }
+                        ldr.classList.add('hidden');
+                    });
+                }
+            } catch (e) {
+                results.innerHTML = `<p class="text-red-400 text-center font-bold px-4">エラーが発生しました。時間を置いてお試しください。</p>`;
+            } finally {
+                loading.classList.add('hidden');
+                document.getElementById('suggest-btn').disabled = false;
+                window.scrollTo({ top: loading.offsetTop - 20, behavior: 'smooth' });
+            }
+        }
+
+        function formatIngredient(ing) {
+            if (typeof ing === 'string') return ing;
+            if (ing && typeof ing === 'object') {
+                const name = ing.name || ing.item || '';
+                const amount = ing.amount || ing.quantity || '';
+                return name + (amount ? ` (${amount})` : '');
+            }
+            return '不明な材料';
+        }
+
+        function createCard(recipe) {
+            const div = document.createElement('div');
+            div.className = "recipe-card bg-white rounded-3xl shadow-lg overflow-hidden flex flex-col md:flex-row border border-pink-50 cursor-pointer active:scale-[0.98]";
+            div.onclick = () => openModal(recipe);
+            
+            let pointsHtml = "";
+            if (recipe.point_hated || recipe.point_condition) {
+                pointsHtml = `
+                <div class="bg-blue-50 p-2 rounded-xl mb-3 border border-blue-100 text-[10px] text-blue-600 font-bold leading-tight">
+                    ${recipe.point_hated ? `<p>🍳 工夫: ${recipe.point_hated}</p>` : ''}
+                    ${recipe.point_condition ? `<p>✨ 条件: ${recipe.point_condition}</p>` : ''}
+                </div>`;
+            }
+
+            div.innerHTML = `
+                <div class="h-56 md:h-auto md:w-64 bg-pink-50 flex items-center justify-center shrink-0 relative overflow-hidden">
+                    <div class="img-loader loader border-2 h-8 w-8 rounded-full"></div>
+                    <img class="recipe-img hidden w-full h-full object-cover">
+                </div>
+                <div class="p-5 flex-1 text-left">
+                    <div class="flex justify-between items-start mb-2">
+                        <h3 class="text-xl font-black text-gray-800 leading-tight">${recipe.title}</h3>
+                        <button onclick="event.stopPropagation(); toggleFav(this, ${JSON.stringify(recipe).replace(/"/g, '&quot;')})" class="text-2xl hover:scale-110 active:scale-90 p-1 transition-transform">🤍</button>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-3 line-clamp-2">${recipe.description}</p>
+                    ${pointsHtml}
+                    <div class="flex gap-2">
+                        <span class="bg-orange-50 text-orange-500 text-[10px] font-bold px-2 py-1.5 rounded-full">🔥 ${recipe.calories} kcal</span>
+                        <span class="bg-green-50 text-green-600 text-[10px] font-bold px-2 py-1.5 rounded-full">💰 ${recipe.cost} 円</span>
+                    </div>
+                </div>
+            `;
+            return div;
+        }
+
+        function toggleFav(btn, recipe) {
+            const idx = favoriteRecipes.findIndex(r => r.title === recipe.title);
+            if (idx === -1) { 
+                btn.innerText = "❤️"; 
+                const card = btn.closest('.recipe-card');
+                const img = card ? card.querySelector('.recipe-img') : null;
+                if (img && img.src && !img.classList.contains('hidden')) {
+                    recipe.image = img.src;
+                }
+                favoriteRecipes.push(JSON.parse(JSON.stringify(recipe)));
+            } else { 
+                btn.innerText = "🤍"; 
+                favoriteRecipes.splice(idx, 1); 
+            }
+            renderFavs();
+        }
+
+        function renderFavs() {
+            const list = document.getElementById('favorites-list');
+            const drawerList = document.getElementById('drawer-list');
+            
+            const html = favoriteRecipes.length === 0 
+                ? `<p class="col-span-full text-center text-gray-400 text-xs py-10">保存されたレシピはありません</p>` 
+                : favoriteRecipes.map(recipe => `
+                    <div class="bg-white rounded-2xl shadow-sm border border-pink-50 overflow-hidden cursor-pointer active:scale-95 transition-transform" onclick="openModal(${JSON.stringify(recipe).replace(/"/g, '&quot;')})">
+                        <div class="aspect-square bg-pink-50"><img src="${recipe.image || ''}" class="w-full h-full object-cover"></div>
+                        <p class="text-[10px] font-bold p-2 truncate text-center">${recipe.title}</p>
+                    </div>
+                `).join('');
+
+            list.innerHTML = html;
+            drawerList.innerHTML = html;
+        }
+
+        function openModal(recipe) {
+            const body = document.getElementById('modal-body');
+            let pointsHtml = "";
+            if (recipe.point_hated || recipe.point_condition) {
+                pointsHtml = `
+                <div class="bg-blue-50 p-4 rounded-2xl mb-6 border border-blue-100 text-xs text-blue-700 font-bold space-y-2">
+                    ${recipe.point_hated ? `<p>🍳 調理の工夫: ${recipe.point_hated}</p>` : ''}
+                    ${recipe.point_condition ? `<p>✨ こだわりの理由: ${recipe.point_condition}</p>` : ''}
+                </div>`;
+            }
+
+            const ingredientsHtml = Array.isArray(recipe.ingredients) 
+                ? recipe.ingredients.map(i => `<li class="border-b border-pink-50 py-2">・ ${formatIngredient(i)}</li>`).join('')
+                : '<li>材料データがありません</li>';
+
+            body.innerHTML = `
+                <div class="aspect-video bg-pink-50 shadow-inner"><img src="${recipe.image || ''}" class="w-full h-full object-cover"></div>
+                <div class="p-6 md:p-10 text-left pb-24 md:pb-10">
+                    <h2 class="text-2xl md:text-3xl font-black text-gray-800 mb-4 leading-tight">${recipe.title}</h2>
+                    <div class="flex gap-3 mb-6">
+                        <span class="bg-orange-50 text-orange-600 font-bold px-3 py-1.5 rounded-xl text-xs">🔥 ${recipe.calories} kcal</span>
+                        <span class="bg-green-50 text-green-600 font-bold px-3 py-1.5 rounded-xl text-xs">💰 ${recipe.cost} 円</span>
+                    </div>
+                    ${pointsHtml}
+                    <div class="space-y-8">
+                        <div>
+                            <h4 class="font-black text-pink-500 border-b-2 border-pink-100 mb-3 pb-1 text-sm flex items-center gap-2">
+                                <span>🛒</span> 材料リスト
+                            </h4>
+                            <ul class="text-sm text-gray-600 space-y-0">${ingredientsHtml}</ul>
+                        </div>
+                        <div>
+                            <h4 class="font-black text-pink-500 border-b-2 border-pink-100 mb-3 pb-1 text-sm flex items-center gap-2">
+                                <span>👨‍🍳</span> 作り方
+                            </h4>
+                            <ol class="text-sm text-gray-600 space-y-4">${recipe.steps.map((s, i) => `<li class="flex gap-3"><span class="bg-pink-100 text-pink-500 w-6 h-6 rounded-full flex items-center justify-center shrink-0 font-bold text-xs">${i+1}</span><span class="flex-1">${s}</span></li>`).join('')}</ol>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('modal-overlay').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() { 
+            document.getElementById('modal-overlay').classList.add('hidden'); 
+            document.body.style.overflow = 'auto';
+        }
+        window.onclick = e => { if (e.target.id === 'modal-overlay') closeModal(); };
+        renderStock();
+    </script>
+</body>
+</html>
