@@ -145,8 +145,8 @@
     <script>
         // APIキーはlocalStorageから取得（初期値は空）
         let userApiKey = localStorage.getItem('GEMINI_API_KEY') || "";
-        const modelText = "gemini-2.5-flash-preview-09-2025";
-        const modelImage = "imagen-4.0-generate-001";
+        const modelText = "gemini-3-flash-preview";
+        const modelImage = "imagen-4.0-fast-generate-001";
 
         let stockIngredients = []; 
         let favoriteRecipes = [];
@@ -274,10 +274,30 @@
             const hatedMustItems = stockIngredients.filter(i => i.status === 'hated-must').map(i => i.name);
 
             const prompt = `
-以下の食材設定に基づいて、レシピを【5つ】提案してください。必ず[${mustItems.join(', ')}]と[${hatedMustItems.join(', ')}]を材料に含めてください。
-条件（${condition || "特になし"}）を反映させてください。
-caloriesとcostは数値のみ出力してください。
-JSON形式で出力項目は title, calories, cost, description, ingredients (Array of Strings), steps (Array of Strings), point_hated, point_condition です。`;
+以下の食材設定に基づいて、レシピを【5つ】提案してください。
+
+【食材の使用絶対義務】
+1. マスト食材: [${mustItems.join(', ')}] -> 必ずメイン材料として含めること。
+2. 苦手マスト食材: [${hatedMustItems.join(', ')}] -> 必ず含めること。使用省略は禁止。
+
+【調理ルール】
+1. 「苦手マスト食材」は食べやすい工夫を施し、必ず工程(steps)に含めてください。
+2. 全てのレシピで「マスト食材」と「苦手マスト食材」の両方を材料に含めてください。
+3. 条件（${condition || "特になし"}）を反映させてください。
+
+【出力形式の注意】
+・caloriesとcostは【数値のみ】出力してください。「kcal」や「円」などの単位を文字列に含めることは【厳禁】です。
+
+【JSON出力項目】
+・title (String)
+・calories (Number)
+・cost (Number)
+・description (String)
+・ingredients (Array of Strings): 各材料と分量を文字列として含めてください。
+・steps (Array of Strings)
+・point_hated (String): 苦手食材の工夫
+・point_condition (String): こだわり充足理由
+・image: "" (空文字)`;
 
             try {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelText}:generateContent?key=${userApiKey}`;
@@ -333,8 +353,8 @@ JSON形式で出力項目は title, calories, cost, description, ingredients (Ar
             if (recipe.point_hated || recipe.point_condition) {
                 pointsHtml = `
                 <div class="bg-blue-50 p-2 rounded-xl mb-3 border border-blue-100 text-[10px] text-blue-600 font-bold leading-tight">
-                    ${recipe.point_hated ? `<p>🍳 工夫: ${recipe.point_hated}</p>` : ''}
-                    ${recipe.point_condition ? `<p>✨ 条件: ${recipe.point_condition}</p>` : ''}
+                    ${recipe.point_hated ? `<p>🍳 苦手食材の調理ポイント: ${recipe.point_hated}</p>` : ''}
+                    ${recipe.point_condition ? `<p>✨ こだわりポイント: ${recipe.point_condition}</p>` : ''}
                 </div>`;
             }
 
@@ -399,8 +419,8 @@ JSON形式で出力項目は title, calories, cost, description, ingredients (Ar
             if (recipe.point_hated || recipe.point_condition) {
                 pointsHtml = `
                 <div class="bg-blue-50 p-4 rounded-2xl mb-6 border border-blue-100 text-xs text-blue-700 font-bold space-y-2">
-                    ${recipe.point_hated ? `<p>🍳 工夫: ${recipe.point_hated}</p>` : ''}
-                    ${recipe.point_condition ? `<p>✨ 理由: ${recipe.point_condition}</p>` : ''}
+                    ${recipe.point_hated ? `<p>🍳 苦手食材の調理ポイント: ${recipe.point_hated}</p>` : ''}
+                    ${recipe.point_condition ? `<p>✨ こだわりポイント: ${recipe.point_condition}</p>` : ''}
                 </div>`;
             }
 
@@ -441,3 +461,4 @@ JSON形式で出力項目は title, calories, cost, description, ingredients (Ar
     </script>
 </body>
 </html>
+
